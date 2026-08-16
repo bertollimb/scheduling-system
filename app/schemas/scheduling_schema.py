@@ -14,11 +14,6 @@ class SchedulingCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_evaluation_link(self) -> "SchedulingCreate":
-        if self.type == AppointmentType.PROCEDURE and self.evaluation_id is None:
-            raise ValueError(
-                "evaluation_id is required when creating a procedure "
-                "for a service that requires a prior evaluation"
-            )
         if self.type == AppointmentType.EVALUATION and self.evaluation_id is not None:
             raise ValueError("evaluation_id must not be set when creating an evaluation")
         return self
