@@ -2,19 +2,30 @@ from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from redis.asyncio import Redis, from_url
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.configs import settings
 from app.core.security import decode_token
 from app.db.session import async_session_maker
 from app.models.user_model import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+_redis_client: Redis | None = None
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
+
+
+async def get_redis() -> Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = from_url(str(settings.REDIS_URL), decode_responses=True)
+    return _redis_client
 
 
 async def get_current_user(
