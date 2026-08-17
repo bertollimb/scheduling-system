@@ -23,6 +23,7 @@ router = APIRouter(
 
 LOCK_TIMEOUT_SECONDS = 10
 LOCK_BLOCKING_TIMEOUT_SECONDS = 5
+SCHEDULING_LOCK_KEY = "lock:scheduling:create"
 
 
 @router.post("", response_model=SchedulingOut, status_code=status.HTTP_201_CREATED)
@@ -31,11 +32,9 @@ async def create_scheduling(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> Scheduling:
-    lock_key = f"lock:scheduling:{data.start_time.isoformat()}"
-
     try:
         async with redis.lock(
-            lock_key,
+            SCHEDULING_LOCK_KEY,
             timeout=LOCK_TIMEOUT_SECONDS,
             blocking_timeout=LOCK_BLOCKING_TIMEOUT_SECONDS,
         ):
@@ -43,7 +42,7 @@ async def create_scheduling(
     except LockError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This time slot is being processed by another request, please try again",
+            detail="Another scheduling request is being processed, please try again",
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -63,6 +62,7 @@ async def list_schedulings(
         )
     result = await db.execute(query)
     return list(result.scalars().all())
+
 
 @router.get("/{scheduling_id}", response_model=SchedulingOut)
 async def get_scheduling(scheduling_id: int, db: AsyncSession = Depends(get_db)) -> Scheduling:
