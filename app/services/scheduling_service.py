@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, time
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.models.client_model import Client
 from app.models.service_model import Service, ServiceCategory
 from app.models.scheduling_model import Scheduling, AppointmentType, AppointmentStatus
@@ -96,17 +97,17 @@ async def check_evaluation_already_used(db: AsyncSession, evaluation_id: int) ->
 async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Scheduling:
     service = await db.get(Service, data.service_id)
     if service is None:
-        raise ValueError("Service not found")
+        raise NotFoundError("Service not found")
 
     client = await db.get(Client, data.client_id)
     if client is None:
-        raise ValueError("Client not found")
+        raise NotFoundError("Client not found")
 
     evaluation = None
     if data.evaluation_id is not None:
         evaluation = await db.get(Scheduling, data.evaluation_id)
         if evaluation is None:
-            raise ValueError("Evaluation not found")
+            raise NotFoundError("Evaluation not found")
 
     if data.type == AppointmentType.PROCEDURE:
         validate_evaluation_requirement(service, data.client_id, evaluation)
@@ -140,7 +141,7 @@ async def complete_evaluation(
 ) -> Scheduling:
     scheduling = await db.get(Scheduling, scheduling_id)
     if scheduling is None:
-        raise ValueError("Scheduling not found")
+        raise NotFoundError("Scheduling not found")
     if scheduling.type != AppointmentType.EVALUATION:
         raise ValueError("Only evaluations can be completed this way")
     if scheduling.estimated_duration_minutes is not None:
@@ -155,7 +156,7 @@ async def complete_evaluation(
 async def cancel_scheduling(db: AsyncSession, scheduling_id: int) -> Scheduling:
     scheduling = await db.get(Scheduling, scheduling_id)
     if scheduling is None:
-        raise ValueError("Scheduling not found")
+        raise NotFoundError("Scheduling not found")
 
     if scheduling.status != AppointmentStatus.CONFIRMED:
         raise ValueError("Only confirmed schedulings can be cancelled")
