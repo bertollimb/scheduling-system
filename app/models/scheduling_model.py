@@ -27,11 +27,19 @@ class Scheduling(Base):
     __tablename__ = "schedulings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False)
-    service_id: Mapped[int] = mapped_column(ForeignKey("services.id"), nullable=False)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id"), nullable=False, index=True
+    )
+    service_id: Mapped[int] = mapped_column(
+        ForeignKey("services.id"), nullable=False, index=True
+    )
 
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    end_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
 
     type: Mapped[AppointmentType] = mapped_column(Enum(AppointmentType), nullable=False)
     status: Mapped[AppointmentStatus] = mapped_column(
