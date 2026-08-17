@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
@@ -24,6 +25,7 @@ router = APIRouter(
 LOCK_TIMEOUT_SECONDS = 10
 LOCK_BLOCKING_TIMEOUT_SECONDS = 5
 SCHEDULING_LOCK_KEY = "lock:scheduling:create"
+LISBON_TZ = ZoneInfo("Europe/Lisbon")
 
 
 @router.post("", response_model=SchedulingOut, status_code=status.HTTP_201_CREATED)
@@ -54,6 +56,11 @@ async def list_schedulings(
 ) -> list[Scheduling]:
     query = select(Scheduling)
     if date is not None:
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=LISBON_TZ)
+        else:
+            date = date.astimezone(LISBON_TZ)
+
         start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = start_of_day + timedelta(days=1)
         query = query.where(

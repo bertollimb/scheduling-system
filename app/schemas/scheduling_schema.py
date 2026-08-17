@@ -1,8 +1,11 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.scheduling_model import AppointmentType, AppointmentStatus
+
+LISBON_TZ = ZoneInfo("Europe/Lisbon")
 
 
 class SchedulingCreate(BaseModel):
@@ -11,6 +14,13 @@ class SchedulingCreate(BaseModel):
     start_time: datetime
     type: AppointmentType
     evaluation_id: int | None = None
+
+    @field_validator("start_time")
+    @classmethod
+    def normalize_to_lisbon_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=LISBON_TZ)
+        return value.astimezone(LISBON_TZ)
 
     @model_validator(mode="after")
     def validate_evaluation_link(self) -> "SchedulingCreate":
