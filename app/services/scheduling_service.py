@@ -56,6 +56,8 @@ def validate_evaluation_requirement(
 
     if evaluation is None:
         raise ValueError("This service requires a prior evaluation")
+    if evaluation.type != AppointmentType.EVALUATION:
+        raise ValueError("The referenced scheduling is not an evaluation")
     if evaluation.client_id != client_id:
         raise ValueError("The evaluation does not belong to this client")
     if evaluation.service_id != service.id:
@@ -79,6 +81,18 @@ async def check_overlap(db: AsyncSession, start_time: datetime, end_time: dateti
     return result.scalars().first() is not None
 
 
+async def check_evaluation_already_used(db: AsyncSession, evaluation_id: int) -> bool:
+    result = await db.execute(
+        select(Scheduling).where(
+            and_(
+                Scheduling.evaluation_id == evaluation_id,
+                Scheduling.status != AppointmentStatus.CANCELLED,
+            )
+        )
+    )
+    return result.scalars().first() is not None
+
+
 async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Scheduling:
     service = await db.get(Service, data.service_id)
     if service is None:
@@ -96,6 +110,8 @@ async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Schedul
 
     if data.type == AppointmentType.PROCEDURE:
         validate_evaluation_requirement(service, data.client_id, evaluation)
+        if evaluation is not None and await check_evaluation_already_used(db, evaluation.id):
+            raise ValueError("This evaluation has already been used for another scheduling")
 
     end_time = calculate_end_time(service, data.start_time, data.type, evaluation)
 
@@ -140,6 +156,9 @@ async def cancel_scheduling(db: AsyncSession, scheduling_id: int) -> Scheduling:
     scheduling = await db.get(Scheduling, scheduling_id)
     if scheduling is None:
         raise ValueError("Scheduling not found")
+
+    if scheduling.status != AppointmentStatus.CONFIRMED:
+        raise ValueError("Only confirmed schedulings can be cancelled")
 
     hours_until_start = (scheduling.start_time - datetime.now(scheduling.start_time.tzinfo)) / timedelta(hours=1)
     if hours_until_start < CANCELLATION_WINDOW_HOURS:
