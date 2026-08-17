@@ -33,6 +33,11 @@ def validate_start_time_for_long_services(service: Service, start_time: datetime
         )
 
 
+def validate_evaluation_creation(service: Service, appointment_type: AppointmentType) -> None:
+    if appointment_type == AppointmentType.EVALUATION and not service.requires_evaluation:
+        raise ValueError("This service does not require an evaluation appointment")
+
+
 def calculate_end_time(
     service: Service, start_time: datetime, appointment_type: AppointmentType,
     evaluation: Scheduling | None = None,
@@ -102,6 +107,8 @@ async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Schedul
     client = await db.get(Client, data.client_id)
     if client is None:
         raise NotFoundError("Client not found")
+
+    validate_evaluation_creation(service, data.type)
 
     evaluation = None
     if data.evaluation_id is not None:
