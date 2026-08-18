@@ -17,10 +17,16 @@ class SchedulingCreate(BaseModel):
 
     @field_validator("start_time")
     @classmethod
-    def normalize_to_lisbon_time(cls, value: datetime) -> datetime:
+    def normalize_and_validate_start_time(cls, value: datetime) -> datetime:
         if value.tzinfo is None:
-            return value.replace(tzinfo=LISBON_TZ)
-        return value.astimezone(LISBON_TZ)
+            value = value.replace(tzinfo=LISBON_TZ)
+        else:
+            value = value.astimezone(LISBON_TZ)
+
+        if value < datetime.now(LISBON_TZ):
+            raise ValueError("start_time cannot be in the past")
+
+        return value
 
     @model_validator(mode="after")
     def validate_evaluation_link(self) -> "SchedulingCreate":
