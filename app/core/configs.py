@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     # Database (Supabase - async PostgreSQL)
     DB_URL: PostgresDsn
 
+    # Test database (local PostgreSQL, used only by the test suite)
+    TEST_DB_URL: PostgresDsn | None = None
+
     # Cache/lock (Upstash Redis)
     REDIS_URL: RedisDsn
 

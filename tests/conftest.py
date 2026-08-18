@@ -1,36 +1,78 @@
-from pydantic import PostgresDsn, RedisDsn, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import asyncio
+from datetime import datetime, timedelta, timezone
+from typing import AsyncGenerator
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+from app.core.configs import settings
+from app.core.security import hash_password
+from app.db.base import Base
+from app.core.deps import get_db
+from app.main import app
+from app.models.user_model import User
+
+TEST_DB_URL = str(settings.TEST_DB_URL)
+
+test_engine = create_async_engine(TEST_DB_URL)
+TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
 
 
-class Settings(BaseSettings):
-    # Database (Supabase - async PostgreSQL)
-    DB_URL: PostgresDsn
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def setup_database():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await test_engine.dispose()
 
-    # Test database (local PostgreSQL, used only by the test suite)
-    TEST_DB_URL: PostgresDsn | None = None
 
-    # Cache/lock (Upstash Redis)
-    REDIS_URL: RedisDsn
+@pytest_asyncio.fixture
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    async with test_engine.connect() as connection:
+        transaction = await connection.begin()
+        session = TestSessionLocal(bind=connection)
 
-    # Authentication
-    JWT_SECRET: str = Field(min_length=32)
-    # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+        yield session
 
-    # CORS - domains allowed to consume the API, comma-separated
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+        await session.close()
+        await transaction.rollback()
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=True,
-        extra="ignore",
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def test_user(db_session: AsyncSession) -> User:
+    user = User(
+        email="test@example.com",
+        hashed_password=hash_password("TestPassword123"),
     )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
 
-    @property
-    def cors_origins(self) -> list[str]:
-        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
-
-settings = Settings()
+@pytest_asyncio.fixture
+async def auth_headers(client: AsyncClient, test_user: User) -> dict[str, str]:
+    response = await client.post(
+        "/auth/login",
+        data={"username": test_user.email, "password": "TestPassword123"},
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
