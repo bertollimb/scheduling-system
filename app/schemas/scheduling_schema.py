@@ -1,8 +1,11 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.scheduling_model import AppointmentType, AppointmentStatus
+
+LISBON_TZ = ZoneInfo("Europe/Lisbon")
 
 
 class SchedulingCreate(BaseModel):
@@ -12,6 +15,19 @@ class SchedulingCreate(BaseModel):
     type: AppointmentType
     evaluation_id: int | None = None
 
+    @field_validator("start_time")
+    @classmethod
+    def normalize_and_validate_start_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=LISBON_TZ)
+        else:
+            value = value.astimezone(LISBON_TZ)
+
+        if value < datetime.now(LISBON_TZ):
+            raise ValueError("start_time cannot be in the past")
+
+        return value
+
     @model_validator(mode="after")
     def validate_evaluation_link(self) -> "SchedulingCreate":
         if self.type == AppointmentType.EVALUATION and self.evaluation_id is not None:
@@ -20,7 +36,11 @@ class SchedulingCreate(BaseModel):
 
 
 class CompleteEvaluationRequest(BaseModel):
-    estimated_duration_minutes: int
+    estimated_duration_minutes: int = Field(
+        ge=300,
+        le=480,
+        description="Estimated duration in minutes (5 to 8 hours)",
+    )
 
 
 class SchedulingOut(BaseModel):
