@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db
+from app.core.deps import get_db, get_redis
 from app.core.security import (
     verify_password,
     create_access_token,
@@ -15,21 +16,41 @@ from app.schemas.auth_schema import Token, RefreshRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 300  # 5 minutes
+
 
 @router.post("/login", response_model=Token)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> Token:
     normalized_email = form_data.username.strip().lower()
+    attempts_key = f"login_attempts:{normalized_email}"
+
+    current_attempts = await redis.get(attempts_key)
+    if current_attempts is not None and int(current_attempts) >= MAX_LOGIN_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+        )
+
     result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
+        pipe = redis.pipeline()
+        pipe.incr(attempts_key)
+        pipe.expire(attempts_key, LOGIN_LOCKOUT_SECONDS)
+        await pipe.execute()
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
+
+    await redis.delete(attempts_key)
 
     return Token(
         access_token=create_access_token(user.email),
