@@ -26,10 +26,14 @@ def validate_business_hours(start_time: datetime, end_time: datetime) -> None:
         raise ValueError("The appointment must be within business hours (10:00-19:00)")
 
 
-def validate_start_time_for_long_services(service: Service, start_time: datetime) -> None:
+def validate_start_time_for_long_services(
+    service: Service, start_time: datetime, appointment_type: AppointmentType
+) -> None:
+    if appointment_type != AppointmentType.PROCEDURE:
+        return
     if service.category in LONG_SERVICE_CATEGORIES and start_time.time() != BUSINESS_START:
         raise ValueError(
-            "Hair treatment and straightening services must start at opening time (10:00)"
+            "Hair treatment and straightening procedures must start at opening time (10:00)"
         )
 
 
@@ -126,7 +130,7 @@ async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Schedul
     end_time = calculate_end_time(service, data.start_time, data.type, evaluation)
 
     validate_business_hours(data.start_time, end_time)
-    validate_start_time_for_long_services(service, data.start_time)
+    validate_start_time_for_long_services(service, data.start_time, data.type)
 
     if await check_overlap(db, data.start_time, end_time):
         raise ValueError("This time slot conflicts with an existing appointment")
