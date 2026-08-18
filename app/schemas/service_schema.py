@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.service_model import ServiceCategory
 
@@ -8,7 +8,7 @@ from app.models.service_model import ServiceCategory
 class ServiceBase(BaseModel):
     name: str
     category: ServiceCategory
-    price_from: Decimal
+    price_from: Decimal = Field(gt=0)
     duration_minutes: int | None = None
     requires_evaluation: bool = False
 
@@ -20,7 +20,7 @@ class ServiceCreate(ServiceBase):
 class ServiceUpdate(BaseModel):
     name: str | None = None
     category: ServiceCategory | None = None
-    price_from: Decimal | None = None
+    price_from: Decimal | None = Field(default=None, gt=0)
     duration_minutes: int | None = None
     requires_evaluation: bool | None = None
 
