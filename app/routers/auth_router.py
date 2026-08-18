@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,28 +30,40 @@ async def login(
     normalized_email = form_data.username.strip().lower()
     attempts_key = f"login_attempts:{normalized_email}"
 
-    current_attempts = await redis.get(attempts_key)
-    if current_attempts is not None and int(current_attempts) >= MAX_LOGIN_ATTEMPTS:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed login attempts. Please try again later.",
-        )
+    # Rate limiting is a defense-in-depth measure, not the primary auth
+    # mechanism. If Redis is unavailable, login must still work against
+    # the database - we fail open here rather than locking everyone out.
+    try:
+        current_attempts = await redis.get(attempts_key)
+        if current_attempts is not None and int(current_attempts) >= MAX_LOGIN_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Please try again later.",
+            )
+    except RedisError:
+        current_attempts = None
 
     result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
-        pipe = redis.pipeline()
-        pipe.incr(attempts_key)
-        pipe.expire(attempts_key, LOGIN_LOCKOUT_SECONDS)
-        await pipe.execute()
+        try:
+            pipe = redis.pipeline()
+            pipe.incr(attempts_key)
+            pipe.expire(attempts_key, LOGIN_LOCKOUT_SECONDS)
+            await pipe.execute()
+        except RedisError:
+            pass
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
 
-    await redis.delete(attempts_key)
+    try:
+        await redis.delete(attempts_key)
+    except RedisError:
+        pass
 
     return Token(
         access_token=create_access_token(user.email),
