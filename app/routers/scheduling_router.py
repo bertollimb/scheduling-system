@@ -23,8 +23,11 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-LOCK_TIMEOUT_SECONDS = 10
-LOCK_BLOCKING_TIMEOUT_SECONDS = 5
+# Lock TTL with a wide safety margin over the expected operation time
+# (a few DB queries + one insert), to avoid the lock expiring mid-operation
+# during a transient slowdown.
+LOCK_TIMEOUT_SECONDS = 30
+LOCK_BLOCKING_TIMEOUT_SECONDS = 10
 SCHEDULING_LOCK_KEY = "lock:scheduling:create"
 LISBON_TZ = ZoneInfo("Europe/Lisbon")
 
