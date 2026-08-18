@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.scheduling_model import AppointmentType, AppointmentStatus
 
@@ -30,7 +30,11 @@ class SchedulingCreate(BaseModel):
 
 
 class CompleteEvaluationRequest(BaseModel):
-    estimated_duration_minutes: int
+    estimated_duration_minutes: int = Field(
+        ge=300,
+        le=480,
+        description="Estimated duration in minutes (5 to 8 hours)",
+    )
 
 
 class SchedulingOut(BaseModel):
