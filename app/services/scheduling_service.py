@@ -64,6 +64,8 @@ def validate_evaluation_requirement(
         raise ValueError("This service requires a prior evaluation")
     if evaluation.type != AppointmentType.EVALUATION:
         raise ValueError("The referenced scheduling is not an evaluation")
+    if evaluation.status != AppointmentStatus.CONFIRMED:
+        raise ValueError("The evaluation is not confirmed (it may have been cancelled)")
     if evaluation.client_id != client_id:
         raise ValueError("The evaluation does not belong to this client")
     if evaluation.service_id != service.id:
@@ -151,6 +153,8 @@ async def complete_evaluation(
         raise NotFoundError("Scheduling not found")
     if scheduling.type != AppointmentType.EVALUATION:
         raise ValueError("Only evaluations can be completed this way")
+    if scheduling.status != AppointmentStatus.CONFIRMED:
+        raise ValueError("Only confirmed evaluations can be completed")
     if scheduling.estimated_duration_minutes is not None:
         raise ValueError("This evaluation has already been completed")
 
