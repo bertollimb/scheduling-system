@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+.git/
+.gitignore
+.env
+.env.example
+create_user.py
+tests/
+TODO.md
+README.md
+alembic/versions/__pycache__/
