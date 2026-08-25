@@ -387,6 +387,53 @@ async def test_concurrent_requests_prevent_double_booking(
     assert status_codes == [201, 400]
 
 
+@pytest.mark.asyncio
+async def test_custom_duration_is_respected(
+    client: AsyncClient, auth_headers, booked_client_id, service_id
+):
+    start = next_open_datetime(hour=10)
+    response = await client.post(
+        "/schedulings",
+        json={
+            "client_id": booked_client_id,
+            "service_id": service_id,
+            "start_time": start.isoformat(),
+            "type": "procedure",
+            "duration_minutes": 10,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    start_dt = datetime.fromisoformat(data["start_time"])
+    end_dt = datetime.fromisoformat(data["end_time"])
+    assert (end_dt - start_dt).total_seconds() / 60 == 10
+
+
+@pytest.mark.asyncio
+async def test_custom_duration_rejected_for_evaluation_required_service(
+    client: AsyncClient, auth_headers, booked_client_id, long_service_id
+):
+    # long_service_id has requires_evaluation=True; even a plain procedure
+    # attempt (without an evaluation_id) should be rejected for
+    # duration_minutes before the evaluation-requirement check even runs.
+    start = next_open_datetime(hour=10)
+    response = await client.post(
+        "/schedulings",
+        json={
+            "client_id": booked_client_id,
+            "service_id": long_service_id,
+            "start_time": start.isoformat(),
+            "type": "procedure",
+            "duration_minutes": 60,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 400
+
+
 # ---- Service-layer tests: cancellation window, tested directly ----
 
 @pytest_asyncio.fixture
