@@ -42,12 +42,22 @@ def validate_evaluation_creation(service: Service, appointment_type: Appointment
         raise ValueError("This service does not require an evaluation appointment")
 
 
+def validate_custom_duration(service: Service, duration_minutes: int | None) -> None:
+    if duration_minutes is not None and service.requires_evaluation:
+        raise ValueError(
+            "duration_minutes cannot be customized for a service that requires an evaluation"
+        )
+
+
 def calculate_end_time(
     service: Service, start_time: datetime, appointment_type: AppointmentType,
-    evaluation: Scheduling | None = None,
+    evaluation: Scheduling | None = None, custom_duration_minutes: int | None = None,
 ) -> datetime:
     if appointment_type == AppointmentType.EVALUATION:
         return start_time + timedelta(minutes=EVALUATION_DURATION_MINUTES)
+
+    if custom_duration_minutes is not None:
+        return start_time + timedelta(minutes=custom_duration_minutes)
 
     if service.duration_minutes is not None:
         return start_time + timedelta(minutes=service.duration_minutes)
@@ -115,6 +125,7 @@ async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Schedul
         raise NotFoundError("Client not found")
 
     validate_evaluation_creation(service, data.type)
+    validate_custom_duration(service, data.duration_minutes)
 
     evaluation = None
     if data.evaluation_id is not None:
@@ -127,7 +138,9 @@ async def create_scheduling(db: AsyncSession, data: SchedulingCreate) -> Schedul
         if evaluation is not None and await check_evaluation_already_used(db, evaluation.id):
             raise ValueError("This evaluation has already been used for another scheduling")
 
-    end_time = calculate_end_time(service, data.start_time, data.type, evaluation)
+    end_time = calculate_end_time(
+        service, data.start_time, data.type, evaluation, data.duration_minutes
+    )
 
     validate_business_hours(data.start_time, end_time)
     validate_start_time_for_long_services(service, data.start_time, data.type)
