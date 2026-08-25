@@ -201,7 +201,7 @@ Requires a separate local PostgreSQL database for tests (set `TEST_DB_URL` in `.
 pytest -v
 ```
 
-42 tests covering:
+44 tests covering:
 - **Auth**: login success/failure, email normalization, refresh token validation (including rejecting an access token used as a refresh token), and rate limiting
 - **Clients / Services**: full CRUD, auth enforcement, field validation
 - **Scheduling**: business hours, evaluation requirement, the full evaluation-to-procedure flow, evaluation reuse prevention, overlap detection, the 24-hour cancellation window, and the concurrency test described above
