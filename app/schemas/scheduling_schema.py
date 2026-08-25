@@ -14,6 +14,7 @@ class SchedulingCreate(BaseModel):
     start_time: datetime
     type: AppointmentType
     evaluation_id: int | None = None
+    duration_minutes: int | None = Field(default=None, gt=0)
 
     @field_validator("start_time")
     @classmethod
@@ -32,6 +33,8 @@ class SchedulingCreate(BaseModel):
     def validate_evaluation_link(self) -> "SchedulingCreate":
         if self.type == AppointmentType.EVALUATION and self.evaluation_id is not None:
             raise ValueError("evaluation_id must not be set when creating an evaluation")
+        if self.type == AppointmentType.EVALUATION and self.duration_minutes is not None:
+            raise ValueError("duration_minutes must not be set when creating an evaluation")
         return self
 
 
