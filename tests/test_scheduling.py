@@ -516,3 +516,23 @@ async def test_cancel_already_cancelled_fails(
 
     with pytest.raises(ValueError, match="confirmed"):
         await scheduling_service.cancel_scheduling(db_session, scheduling.id)
+
+@pytest.mark.asyncio
+async def test_cancel_past_scheduling_without_24h_notice_succeeds(
+    db_session: AsyncSession, db_client: Client, db_service: Service
+):
+    start = datetime.now(LISBON_TZ) - timedelta(days=1)
+    scheduling = Scheduling(
+        client_id=db_client.id,
+        service_id=db_service.id,
+        start_time=start,
+        end_time=start + timedelta(minutes=90),
+        type=AppointmentType.PROCEDURE,
+    )
+    db_session.add(scheduling)
+    await db_session.commit()
+    await db_session.refresh(scheduling)
+
+    result = await scheduling_service.cancel_scheduling(db_session, scheduling.id)
+
+    assert result.status == AppointmentStatus.CANCELLED
