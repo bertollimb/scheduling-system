@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user
 from app.models.client_model import Client
+from app.models.scheduling_model import Scheduling, AppointmentStatus
 from app.schemas.client_schema import ClientCreate, ClientUpdate, ClientOut
 
 router = APIRouter(
@@ -58,6 +59,25 @@ async def delete_client(client_id: int, db: AsyncSession = Depends(get_db)) -> N
     client = await db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    confirmed_exists = await db.execute(
+        select(Scheduling).where(
+            Scheduling.client_id == client_id,
+            Scheduling.status == AppointmentStatus.CONFIRMED,
+        )
+    )
+    if confirmed_exists.scalars().first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a client with an active (confirmed) scheduling",
+        )
+
+    # Cancelled schedulings still reference this client at the database
+    # level, which would otherwise block deletion via the foreign key
+    # constraint. Only a confirmed scheduling is meant to protect a
+    # client from being removed, so cancelled ones tied to this client
+    # are deleted along with it.
+    await db.execute(delete(Scheduling).where(Scheduling.client_id == client_id))
 
     try:
         await db.delete(client)
