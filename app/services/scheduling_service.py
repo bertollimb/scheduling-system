@@ -189,9 +189,18 @@ async def cancel_scheduling(db: AsyncSession, scheduling_id: int) -> Scheduling:
     if scheduling.status != AppointmentStatus.CONFIRMED:
         raise ValueError("Only confirmed schedulings can be cancelled")
 
-    hours_until_start = (scheduling.start_time - datetime.now(scheduling.start_time.tzinfo)) / timedelta(hours=1)
-    if hours_until_start < CANCELLATION_WINDOW_HOURS:
-        raise ValueError("Cancellations require at least 24 hours notice")
+    now = datetime.now(scheduling.start_time.tzinfo)
+
+    # The 24h notice requirement protects against last-minute disruption
+    # to an appointment that hasn't happened yet. If the appointment's
+    # start_time has already passed, that protection no longer applies -
+    # cancelling at this point is a correction to the record (e.g. a
+    # no-show, or cleaning up stale data), not a disruptive last-minute
+    # change, so it's allowed without the notice window.
+    if scheduling.start_time > now:
+        hours_until_start = (scheduling.start_time - now) / timedelta(hours=1)
+        if hours_until_start < CANCELLATION_WINDOW_HOURS:
+            raise ValueError("Cancellations require at least 24 hours notice")
 
     scheduling.status = AppointmentStatus.CANCELLED
     await db.commit()
