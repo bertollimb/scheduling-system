@@ -101,3 +101,91 @@ async def test_delete_client(client: AsyncClient, auth_headers: dict[str, str]):
 
     get_response = await client.get(f"/clients/{client_id}", headers=auth_headers)
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_client_with_confirmed_scheduling_fails(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    from datetime import datetime, timedelta
+    from app.schemas.scheduling_schema import LISBON_TZ
+
+    client_response = await client.post(
+        "/clients",
+        json={"first_name": "Lucia", "last_name": "Alves", "phone": "955555555"},
+        headers=auth_headers,
+    )
+    client_id = client_response.json()["id"]
+
+    service_response = await client.post(
+        "/services",
+        json={"name": "Corte", "category": "color_cut", "price_from": "20.00", "duration_minutes": 30},
+        headers=auth_headers,
+    )
+    service_id = service_response.json()["id"]
+
+    start = datetime.now(LISBON_TZ) + timedelta(days=7)
+    while start.weekday() not in {1, 2, 3, 4, 5}:
+        start += timedelta(days=1)
+    start = start.replace(hour=10, minute=0, second=0, microsecond=0)
+
+    await client.post(
+        "/schedulings",
+        json={
+            "client_id": client_id,
+            "service_id": service_id,
+            "start_time": start.isoformat(),
+            "type": "procedure",
+        },
+        headers=auth_headers,
+    )
+
+    delete_response = await client.delete(f"/clients/{client_id}", headers=auth_headers)
+    assert delete_response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delete_client_with_only_cancelled_schedulings_succeeds(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    from datetime import datetime, timedelta
+    from app.schemas.scheduling_schema import LISBON_TZ
+
+    client_response = await client.post(
+        "/clients",
+        json={"first_name": "Rui", "last_name": "Pinto", "phone": "966666666"},
+        headers=auth_headers,
+    )
+    client_id = client_response.json()["id"]
+
+    service_response = await client.post(
+        "/services",
+        json={"name": "Corte", "category": "color_cut", "price_from": "20.00", "duration_minutes": 30},
+        headers=auth_headers,
+    )
+    service_id = service_response.json()["id"]
+
+    start = datetime.now(LISBON_TZ) + timedelta(days=7)
+    while start.weekday() not in {1, 2, 3, 4, 5}:
+        start += timedelta(days=1)
+    start = start.replace(hour=10, minute=0, second=0, microsecond=0)
+
+    scheduling_response = await client.post(
+        "/schedulings",
+        json={
+            "client_id": client_id,
+            "service_id": service_id,
+            "start_time": start.isoformat(),
+            "type": "procedure",
+        },
+        headers=auth_headers,
+    )
+    scheduling_id = scheduling_response.json()["id"]
+
+    cancel_response = await client.patch(
+        f"/schedulings/{scheduling_id}/cancel", headers=auth_headers
+    )
+    assert cancel_response.status_code == 200
+
+    delete_response = await client.delete(f"/clients/{client_id}", headers=auth_headers)
+    assert delete_response.status_code == 204
