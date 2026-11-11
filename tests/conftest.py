@@ -13,6 +13,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
+from app.core import token_revocation
 from app.core.configs import settings
 from app.core.security import hash_password
 from app.db.base import Base
@@ -22,6 +23,8 @@ from app.models.user_model import User
 
 TEST_DB_URL = str(settings.TEST_DB_URL)
 TEST_USER_EMAIL = "test@example.com"
+TEST_REDIS_KEY_PREFIX = "test:"
+TEST_REDIS_KEY_MAX_TTL_SECONDS = 60
 
 test_engine = create_async_engine(TEST_DB_URL)
 TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
@@ -67,6 +70,33 @@ async def cleanup_redis() -> AsyncGenerator[None, None]:
     await redis.delete(attempts_key)
     yield
     await redis.delete(attempts_key)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_token_revocation_keys(monkeypatch) -> AsyncGenerator[set[str], None]:
+    # The test suite runs against a real Redis. Every token revocation key
+    # the app touches during a test gets a "test:" prefix and a short TTL,
+    # and exactly those keys are deleted afterwards - never by pattern.
+    touched_keys: set[str] = set()
+    original_key = token_revocation.revoked_token_key
+    original_ttl = token_revocation.remaining_ttl_seconds
+
+    def test_key(jti: str) -> str:
+        key = f"{TEST_REDIS_KEY_PREFIX}{original_key(jti)}"
+        touched_keys.add(key)
+        return key
+
+    def short_ttl(payload: dict) -> int:
+        return min(original_ttl(payload), TEST_REDIS_KEY_MAX_TTL_SECONDS)
+
+    monkeypatch.setattr(token_revocation, "revoked_token_key", test_key)
+    monkeypatch.setattr(token_revocation, "remaining_ttl_seconds", short_ttl)
+
+    yield touched_keys
+
+    if touched_keys:
+        redis = await get_redis()
+        await redis.delete(*touched_keys)
 
 
 @pytest_asyncio.fixture

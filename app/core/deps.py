@@ -3,11 +3,13 @@ from typing import AsyncGenerator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from redis.asyncio import Redis, from_url
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.configs import settings
 from app.core.security import decode_token
+from app.core.token_revocation import is_token_revoked
 from app.db.session import async_session_maker
 from app.models.user_model import User
 
@@ -38,6 +40,7 @@ async def close_redis() -> None:
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,6 +53,17 @@ async def get_current_user(
         raise credentials_exception
 
     if payload.get("type") != "access":
+        raise credentials_exception
+
+    # The denylist check fails open: if Redis is unavailable, a valid
+    # access token is still accepted. Access tokens are short-lived, and
+    # rejecting every request would lock the only user out entirely over
+    # a defense-in-depth measure (same trade-off as login rate limiting).
+    try:
+        revoked = await is_token_revoked(redis, payload)
+    except RedisError:
+        revoked = False
+    if revoked:
         raise credentials_exception
 
     email: str | None = payload.get("sub")
