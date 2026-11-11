@@ -95,7 +95,7 @@ async def refresh(
     # used (SET NX) before a new pair is issued, so it can only be
     # exchanged once - of two concurrent requests with the same token,
     # exactly one succeeds. A token revoked by logout fails the same way,
-    # and so does one issued before the last password change.
+    # and so does one issued before the last password reset.
     # This check fails closed: refresh tokens are long-lived, so if Redis
     # is unavailable the refresh is refused (login still works).
     try:
