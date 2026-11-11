@@ -1,5 +1,3 @@
-import time
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from redis.asyncio import Redis
@@ -14,14 +12,9 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
 )
-from app.core.token_revocation import (
-    is_token_revoked,
-    revoke_token,
-    revoke_tokens_issued_before,
-)
+from app.core.token_revocation import is_token_revoked, revoke_token
 from app.models.user_model import User
-from app.schemas.auth_schema import Token, RefreshRequest, LogoutRequest, ChangePasswordRequest
-from app.services.auth_service import set_user_password
+from app.schemas.auth_schema import Token, RefreshRequest, LogoutRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -102,7 +95,7 @@ async def refresh(
     # used (SET NX) before a new pair is issued, so it can only be
     # exchanged once - of two concurrent requests with the same token,
     # exactly one succeeds. A token revoked by logout fails the same way,
-    # and so does one issued before the last password change.
+    # and so does one issued before the last password reset.
     # This check fails closed: refresh tokens are long-lived, so if Redis
     # is unavailable the refresh is refused (login still works).
     try:
@@ -152,36 +145,3 @@ async def logout(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Logout is temporarily unavailable, please try again",
         )
-
-
-@router.post("/change-password", response_model=Token)
-async def change_password(
-    data: ChangePasswordRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-) -> Token:
-    # 403 rather than 401: the caller is authenticated, and a 401 would be
-    # handled by the frontend as an expired session.
-    if not verify_password(data.current_password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Current password is incorrect",
-        )
-
-    changed_at = time.time()
-    await set_user_password(db, user, data.new_password)
-
-    # Every token issued before the change stops being accepted. If Redis
-    # is unavailable the password is still changed, but older tokens stay
-    # valid until they expire.
-    try:
-        await revoke_tokens_issued_before(redis, user.email, changed_at)
-    except RedisError:
-        pass
-
-    # A fresh pair, issued after the change, keeps the current session alive.
-    return Token(
-        access_token=create_access_token(user.email),
-        refresh_token=create_refresh_token(user.email),
-    )

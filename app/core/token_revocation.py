@@ -11,7 +11,8 @@ from app.core.configs import settings
 #   token's remaining lifetime, so the key removes itself once the token
 #   would have expired anyway (logout, refresh token rotation).
 # - A per-user "revoked before" timestamp: every token for that user
-#   issued before it is rejected (password change). It lives as long as
+#   issued before it is rejected (password reset via the admin script,
+#   scripts/reset_password.py). It lives as long as
 #   the longest token lifetime, after which every older token has expired.
 #
 # These helpers let RedisError propagate: each caller decides whether a

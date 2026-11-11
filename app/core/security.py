@@ -41,9 +41,9 @@ def _create_token(subject: str, token_type: str, expires_delta: timedelta) -> st
         "exp": now + expires_delta,
         "type": token_type,
         "jti": uuid4().hex,
-        # Sub-second precision, so a password change can invalidate every
-        # token issued before it without also rejecting the new pair it
-        # issues in the same second.
+        # Sub-second precision, so a password reset can invalidate every
+        # token issued before it without also rejecting a token issued in
+        # the same second right after it.
         "iat": now.timestamp(),
     }
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
