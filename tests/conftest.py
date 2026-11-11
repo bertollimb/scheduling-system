@@ -78,19 +78,25 @@ async def isolate_token_revocation_keys(monkeypatch) -> AsyncGenerator[set[str],
     # the app touches during a test gets a "test:" prefix and a short TTL,
     # and exactly those keys are deleted afterwards - never by pattern.
     touched_keys: set[str] = set()
-    original_key = token_revocation.revoked_token_key
-    original_ttl = token_revocation.remaining_ttl_seconds
 
-    def test_key(jti: str) -> str:
-        key = f"{TEST_REDIS_KEY_PREFIX}{original_key(jti)}"
-        touched_keys.add(key)
-        return key
+    def prefixed(original_key_fn):
+        def test_key(identifier: str) -> str:
+            key = f"{TEST_REDIS_KEY_PREFIX}{original_key_fn(identifier)}"
+            touched_keys.add(key)
+            return key
 
-    def short_ttl(payload: dict) -> int:
-        return min(original_ttl(payload), TEST_REDIS_KEY_MAX_TTL_SECONDS)
+        return test_key
 
-    monkeypatch.setattr(token_revocation, "revoked_token_key", test_key)
-    monkeypatch.setattr(token_revocation, "remaining_ttl_seconds", short_ttl)
+    def capped(original_ttl_fn):
+        def short_ttl(*args) -> int:
+            return min(original_ttl_fn(*args), TEST_REDIS_KEY_MAX_TTL_SECONDS)
+
+        return short_ttl
+
+    for name in ("revoked_token_key", "tokens_revoked_before_key"):
+        monkeypatch.setattr(token_revocation, name, prefixed(getattr(token_revocation, name)))
+    for name in ("remaining_ttl_seconds", "user_revocation_ttl_seconds"):
+        monkeypatch.setattr(token_revocation, name, capped(getattr(token_revocation, name)))
 
     yield touched_keys
 
