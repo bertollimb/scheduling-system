@@ -23,6 +23,9 @@ from app.models.user_model import User
 
 TEST_DB_URL = str(settings.TEST_DB_URL)
 TEST_USER_EMAIL = "test@example.com"
+# Used by tests that log in with an unknown email; its failed attempts are
+# rate-limited like any other, so the counter must be cleaned up as well.
+NONEXISTENT_USER_EMAIL = "nobody@example.com"
 TEST_REDIS_KEY_PREFIX = "test:"
 TEST_REDIS_KEY_MAX_TTL_SECONDS = 60
 
@@ -65,11 +68,13 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_redis() -> AsyncGenerator[None, None]:
     redis = await get_redis()
-    attempts_key = f"login_attempts:{TEST_USER_EMAIL}"
+    attempts_keys = [
+        f"login_attempts:{email}" for email in (TEST_USER_EMAIL, NONEXISTENT_USER_EMAIL)
+    ]
 
-    await redis.delete(attempts_key)
+    await redis.delete(*attempts_keys)
     yield
-    await redis.delete(attempts_key)
+    await redis.delete(*attempts_keys)
 
 
 @pytest_asyncio.fixture(autouse=True)
