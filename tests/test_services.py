@@ -191,3 +191,47 @@ async def test_delete_service(client: AsyncClient, auth_headers: dict[str, str])
 
     get_response = await client.get(f"/services/{service_id}", headers=auth_headers)
     assert get_response.status_code == 404
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["name", "category", "price_from", "requires_evaluation"])
+async def test_update_service_with_null_required_field_fails(
+    client: AsyncClient, auth_headers: dict[str, str], field: str
+):
+    create_response = await client.post(
+        "/services",
+        json={"name": "Retoque de Raiz", "category": "color_cut", "price_from": "35.00"},
+        headers=auth_headers,
+    )
+    service_id = create_response.json()["id"]
+
+    update_response = await client.patch(
+        f"/services/{service_id}",
+        json={field: None},
+        headers=auth_headers,
+    )
+
+    assert update_response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_service_can_clear_duration(client: AsyncClient, auth_headers: dict[str, str]):
+    create_response = await client.post(
+        "/services",
+        json={
+            "name": "Retoque de Raiz",
+            "category": "color_cut",
+            "price_from": "35.00",
+            "duration_minutes": 60,
+        },
+        headers=auth_headers,
+    )
+    service_id = create_response.json()["id"]
+
+    update_response = await client.patch(
+        f"/services/{service_id}",
+        json={"duration_minutes": None},
+        headers=auth_headers,
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["duration_minutes"] is None

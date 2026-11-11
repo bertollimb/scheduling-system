@@ -1,3 +1,6 @@
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -7,7 +10,14 @@ from app.core.deps import close_redis
 from app.db.session import async_session_maker
 from app.routers import auth_router, client_router, service_router, scheduling_router
 
-app = FastAPI(title="Scheduling System")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    await close_redis()
+
+
+app = FastAPI(title="Scheduling System", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,11 +31,6 @@ app.include_router(auth_router.router)
 app.include_router(client_router.router)
 app.include_router(service_router.router)
 app.include_router(scheduling_router.router)
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    await close_redis()
 
 
 @app.get("/health")

@@ -31,6 +31,13 @@ class ClientUpdate(BaseModel):
     phone: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
 
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def reject_null(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("field cannot be null")
+        return value
+
     @field_validator("phone", mode="before")
     @classmethod
     def normalize_blank_phone(cls, value: str | None) -> str | None:
