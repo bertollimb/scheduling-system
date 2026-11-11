@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from app.core.configs import settings
 from app.core.deps import close_redis
+from app.core.pagination import TOTAL_COUNT_HEADER
 from app.db.session import async_session_maker
 from app.routers import auth_router, client_router, service_router, scheduling_router
 
@@ -25,6 +26,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[TOTAL_COUNT_HEADER],
 )
 
 app.include_router(auth_router.router)

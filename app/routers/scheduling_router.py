@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from redis.asyncio import Redis
 from redis.exceptions import LockError
 from sqlalchemy import select
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user, get_redis
 from app.core.exceptions import NotFoundError
+from app.core.pagination import PaginationParams, paginate
 from app.models.scheduling_model import Scheduling
 from app.schemas.scheduling_schema import (
     SchedulingCreate,
@@ -58,9 +59,12 @@ async def create_scheduling(
 
 @router.get("", response_model=list[SchedulingOut])
 async def list_schedulings(
-    date: datetime | None = None, db: AsyncSession = Depends(get_db)
+    response: Response,
+    date: datetime | None = None,
+    pagination: PaginationParams = Depends(),
+    db: AsyncSession = Depends(get_db),
 ) -> list[Scheduling]:
-    query = select(Scheduling)
+    query = select(Scheduling).order_by(Scheduling.id)
     if date is not None:
         if date.tzinfo is None:
             date = date.replace(tzinfo=LISBON_TZ)
@@ -73,8 +77,7 @@ async def list_schedulings(
             Scheduling.start_time >= start_of_day,
             Scheduling.start_time < end_of_day,
         )
-    result = await db.execute(query)
-    return list(result.scalars().all())
+    return await paginate(db, query, pagination, response)
 
 
 @router.get("/{scheduling_id}", response_model=SchedulingOut)
