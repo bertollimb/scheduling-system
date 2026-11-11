@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.scheduling_model import AppointmentType, AppointmentStatus
+from app.models.scheduling_model import AppointmentType, AppointmentStatus, effective_status
 
 LISBON_TZ = ZoneInfo("Europe/Lisbon")
 
@@ -59,3 +59,8 @@ class SchedulingOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def derive_completed_status(self) -> "SchedulingOut":
+        self.status = effective_status(self.status, self.end_time)
+        return self
