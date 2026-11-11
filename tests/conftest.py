@@ -13,6 +13,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
+from app.core import token_revocation
 from app.core.configs import settings
 from app.core.security import hash_password
 from app.db.base import Base
@@ -22,6 +23,11 @@ from app.models.user_model import User
 
 TEST_DB_URL = str(settings.TEST_DB_URL)
 TEST_USER_EMAIL = "test@example.com"
+# Used by tests that log in with an unknown email; its failed attempts are
+# rate-limited like any other, so the counter must be cleaned up as well.
+NONEXISTENT_USER_EMAIL = "nobody@example.com"
+TEST_REDIS_KEY_PREFIX = "test:"
+TEST_REDIS_KEY_MAX_TTL_SECONDS = 60
 
 test_engine = create_async_engine(TEST_DB_URL)
 TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
@@ -62,11 +68,46 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_redis() -> AsyncGenerator[None, None]:
     redis = await get_redis()
-    attempts_key = f"login_attempts:{TEST_USER_EMAIL}"
+    attempts_keys = [
+        f"login_attempts:{email}" for email in (TEST_USER_EMAIL, NONEXISTENT_USER_EMAIL)
+    ]
 
-    await redis.delete(attempts_key)
+    await redis.delete(*attempts_keys)
     yield
-    await redis.delete(attempts_key)
+    await redis.delete(*attempts_keys)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_token_revocation_keys(monkeypatch) -> AsyncGenerator[set[str], None]:
+    # The test suite runs against a real Redis. Every token revocation key
+    # the app touches during a test gets a "test:" prefix and a short TTL,
+    # and exactly those keys are deleted afterwards - never by pattern.
+    touched_keys: set[str] = set()
+
+    def prefixed(original_key_fn):
+        def test_key(identifier: str) -> str:
+            key = f"{TEST_REDIS_KEY_PREFIX}{original_key_fn(identifier)}"
+            touched_keys.add(key)
+            return key
+
+        return test_key
+
+    def capped(original_ttl_fn):
+        def short_ttl(*args) -> int:
+            return min(original_ttl_fn(*args), TEST_REDIS_KEY_MAX_TTL_SECONDS)
+
+        return short_ttl
+
+    for name in ("revoked_token_key", "tokens_revoked_before_key"):
+        monkeypatch.setattr(token_revocation, name, prefixed(getattr(token_revocation, name)))
+    for name in ("remaining_ttl_seconds", "user_revocation_ttl_seconds"):
+        monkeypatch.setattr(token_revocation, name, capped(getattr(token_revocation, name)))
+
+    yield touched_keys
+
+    if touched_keys:
+        redis = await get_redis()
+        await redis.delete(*touched_keys)
 
 
 @pytest_asyncio.fixture

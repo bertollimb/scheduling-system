@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user
+from app.core.pagination import PaginationParams, paginate
 from app.models.client_model import Client
 from app.models.scheduling_model import Scheduling, AppointmentStatus
 from app.schemas.client_schema import ClientCreate, ClientUpdate, ClientOut
@@ -25,9 +26,12 @@ async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db)) 
 
 
 @router.get("", response_model=list[ClientOut])
-async def list_clients(db: AsyncSession = Depends(get_db)) -> list[Client]:
-    result = await db.execute(select(Client))
-    return list(result.scalars().all())
+async def list_clients(
+    response: Response,
+    pagination: PaginationParams = Depends(),
+    db: AsyncSession = Depends(get_db),
+) -> list[Client]:
+    return await paginate(db, select(Client).order_by(Client.id), pagination, response)
 
 
 @router.get("/{client_id}", response_model=ClientOut)

@@ -10,6 +10,5 @@ __pycache__/
 .env.example
 create_user.py
 tests/
-TODO.md
 README.md
 alembic/versions/__pycache__/

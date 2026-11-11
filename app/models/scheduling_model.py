@@ -23,6 +23,24 @@ class AppointmentStatus(str, enum.Enum):
     COMPLETED = "completed"
 
 
+def effective_status(
+    status: AppointmentStatus, end_time: datetime, now: datetime | None = None
+) -> AppointmentStatus:
+    """Status as reported by the API.
+
+    COMPLETED is derived at read time, never stored: a CONFIRMED
+    scheduling whose end_time has passed is reported as COMPLETED. The
+    stored status stays CONFIRMED, so every business rule that reads it
+    (client/service deletion, overlap checks, evaluation linking,
+    cancellation) behaves exactly as before.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if status == AppointmentStatus.CONFIRMED and end_time <= now:
+        return AppointmentStatus.COMPLETED
+    return status
+
+
 class Scheduling(Base):
     __tablename__ = "schedulings"
 

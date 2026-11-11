@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user
+from app.core.pagination import PaginationParams, paginate
 from app.models.service_model import Service
 from app.models.scheduling_model import Scheduling, AppointmentStatus
 from app.schemas.service_schema import ServiceCreate, ServiceUpdate, ServiceOut
@@ -25,9 +26,12 @@ async def create_service(data: ServiceCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("", response_model=list[ServiceOut])
-async def list_services(db: AsyncSession = Depends(get_db)) -> list[Service]:
-    result = await db.execute(select(Service))
-    return list(result.scalars().all())
+async def list_services(
+    response: Response,
+    pagination: PaginationParams = Depends(),
+    db: AsyncSession = Depends(get_db),
+) -> list[Service]:
+    return await paginate(db, select(Service).order_by(Service.id), pagination, response)
 
 
 @router.get("/{service_id}", response_model=ServiceOut)

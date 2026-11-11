@@ -2,6 +2,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.security import create_access_token, create_refresh_token
+from tests.conftest import NONEXISTENT_USER_EMAIL
 from app.models.user_model import User
 
 
@@ -33,7 +34,7 @@ async def test_login_wrong_password_fails(client: AsyncClient, test_user: User):
 async def test_login_nonexistent_email_fails(client: AsyncClient):
     response = await client.post(
         "/auth/login",
-        data={"username": "nobody@example.com", "password": "AnyPassword123"},
+        data={"username": NONEXISTENT_USER_EMAIL, "password": "AnyPassword123"},
     )
 
     assert response.status_code == 401
