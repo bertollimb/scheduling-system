@@ -41,7 +41,7 @@ Only one person (the salon owner) uses this system — but a single user can sti
 - **Alembic** — database migrations
 - **Pydantic v2** — request/response validation
 - **JWT** authentication (access + refresh tokens)
-- **pytest** — 42 automated tests, including a real concurrency test using `asyncio.gather`
+- **pytest** — 57 automated tests, including a real concurrency test using `asyncio.gather`
 - **Docker** — containerized deployment
 - Deployed on **Render**, database and cache on **Supabase**/**Upstash**
 
@@ -201,7 +201,7 @@ Requires a separate local PostgreSQL database for tests (set `TEST_DB_URL` in `.
 pytest -v
 ```
 
-47 tests covering:
+57 tests covering:
 - **Auth**: login success/failure, email normalization, refresh token validation (including rejecting an access token used as a refresh token), and rate limiting
 - **Clients / Services**: full CRUD, auth enforcement, field validation
 - **Scheduling**: business hours, evaluation requirement, the full evaluation-to-procedure flow, evaluation reuse prevention, overlap detection, the 24-hour cancellation window, and the concurrency test described above
