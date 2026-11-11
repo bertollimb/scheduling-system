@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -171,3 +172,29 @@ async def test_logout_fails_closed_when_redis_is_down(
     response = await client.post("/auth/logout", headers=bearer(access_token))
 
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_tokens_issued_before_user_revocation_are_rejected(
+    client: AsyncClient, test_user: User
+):
+    # scripts/reset_password.py calls revoke_tokens_issued_before after a
+    # reset, so every session opened with the old password is dropped.
+    old_access_token = create_access_token(test_user.email)
+    old_refresh_token = create_refresh_token(test_user.email)
+    legacy_access_token = legacy_token(test_user.email, "access")
+
+    redis = await get_redis()
+    await token_revocation.revoke_tokens_issued_before(redis, test_user.email, time.time())
+
+    new_access_token = create_access_token(test_user.email)
+    new_refresh_token = create_refresh_token(test_user.email)
+
+    assert (await client.get("/clients", headers=bearer(old_access_token))).status_code == 401
+    assert (await client.get("/clients", headers=bearer(legacy_access_token))).status_code == 401
+    old_refresh = await client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
+    assert old_refresh.status_code == 401
+
+    assert (await client.get("/clients", headers=bearer(new_access_token))).status_code == 200
+    new_refresh = await client.post("/auth/refresh", json={"refresh_token": new_refresh_token})
+    assert new_refresh.status_code == 200
