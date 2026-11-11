@@ -44,6 +44,34 @@ async def test_create_client_with_empty_name_fails(client: AsyncClient, auth_hea
 
 
 @pytest.mark.asyncio
+async def test_create_client_without_phone(client: AsyncClient, auth_headers: dict[str, str]):
+    response = await client.post(
+        "/clients",
+        json={"first_name": "Carla", "last_name": "Dias"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["first_name"] == "Carla"
+    assert data["phone"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_client_with_blank_phone_stores_null(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    response = await client.post(
+        "/clients",
+        json={"first_name": "Carla", "last_name": "Dias", "phone": "   "},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["phone"] is None
+
+
+@pytest.mark.asyncio
 async def test_list_clients(client: AsyncClient, auth_headers: dict[str, str]):
     await client.post(
         "/clients",
@@ -84,6 +112,27 @@ async def test_update_client_partial(client: AsyncClient, auth_headers: dict[str
     assert update_response.status_code == 200
     data = update_response.json()
     assert data["phone"] == "933333333"
+    assert data["first_name"] == "Pedro"
+
+
+@pytest.mark.asyncio
+async def test_update_client_can_clear_phone(client: AsyncClient, auth_headers: dict[str, str]):
+    create_response = await client.post(
+        "/clients",
+        json={"first_name": "Pedro", "last_name": "Alves", "phone": "922222222"},
+        headers=auth_headers,
+    )
+    client_id = create_response.json()["id"]
+
+    update_response = await client.patch(
+        f"/clients/{client_id}",
+        json={"phone": None},
+        headers=auth_headers,
+    )
+
+    assert update_response.status_code == 200
+    data = update_response.json()
+    assert data["phone"] is None
     assert data["first_name"] == "Pedro"
 
 
