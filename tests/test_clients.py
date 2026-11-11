@@ -238,3 +238,23 @@ async def test_delete_client_with_only_cancelled_schedulings_succeeds(
 
     delete_response = await client.delete(f"/clients/{client_id}", headers=auth_headers)
     assert delete_response.status_code == 204
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["first_name", "last_name"])
+async def test_update_client_with_null_required_field_fails(
+    client: AsyncClient, auth_headers: dict[str, str], field: str
+):
+    create_response = await client.post(
+        "/clients",
+        json={"first_name": "Pedro", "last_name": "Alves", "phone": "922222222"},
+        headers=auth_headers,
+    )
+    client_id = create_response.json()["id"]
+
+    update_response = await client.patch(
+        f"/clients/{client_id}",
+        json={field: None},
+        headers=auth_headers,
+    )
+
+    assert update_response.status_code == 422
